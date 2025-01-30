@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maine Snow Accumulation Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        #map { height: 600px; width: 100%; }
+    </style>
+</head>
+<body>
+
+    <h2>48-Hour Snow Accumulation Forecast for Maine</h2>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize Leaflet map centered on Maine
+        var map = L.map('map').setView([45.0, -69.0], 6);
+
+        // Add a tile layer (background map)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Function to fetch snow accumulation data from NWS API
+        async function fetchSnowAccumulation(office, gridX, gridY) {
+            const url = `https://api.weather.gov/gridpoints/${office}/${gridX},${gridY}/forecast`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data && data.properties && data.properties.periods) {
+                    let totalSnow = 0;
+                    data.properties.periods.forEach(period => {
+                        if (period.detailedForecast.includes("snow")) {
+                            const match = period.detailedForecast.match(/(\d+)\s?inches?/);
+                            if (match) {
+                                totalSnow += parseInt(match[1], 10);
+                            }
+                        }
+                    });
+
+                    return totalSnow;
+                }
+            } catch (error) {
+                console.error("Error fetching NWS data:", error);
+            }
+
+            return 0;
+        }
+
+        // Function to add a marker with snow accumulation data
+        async function addSnowMarker(lat, lon, city, office, gridX, gridY) {
+            const snowAmount = await fetchSnowAccumulation(office, gridX, gridY);
+            
+            let color = snowAmount > 12 ? "red" : snowAmount > 6 ? "orange" : "blue";
+
+            L.circleMarker([lat, lon], {
+                radius: 10,
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.6
+            }).addTo(map)
+            .bindPopup(`<b>${city}</b><br>48-Hour Snow Accumulation: ${snowAmount} inches`);
+        }
+
+        // List of major towns and cities in Maine with their NWS API grid locations
+        const locations = [
+            { city: "Portland", lat: 43.6591, lon: -70.2568, office: "GYX", gridX: 66, gridY: 72 },
+            { city: "Bangor", lat: 44.8012, lon: -68.7778, office: "CAR", gridX: 78, gridY: 34 },
+            { city: "Augusta", lat: 44.3106, lon: -69.7795, office: "GYX", gridX: 69, gridY: 59 },
+            { city: "Lewiston", lat: 44.1004, lon: -70.2148, office: "GYX", gridX: 64, gridY: 62 },
+            { city: "Bar Harbor", lat: 44.3876, lon: -68.2039, office: "CAR", gridX: 102, gridY: 37 },
+            { city: "Presque Isle", lat: 46.6810, lon: -68.0156, office: "CAR", gridX: 78, gridY: 72 },
+            { city: "Waterville", lat: 44.5520, lon: -69.6317, office: "GYX", gridX: 69, gridY: 51 },
+            { city: "Rockland", lat: 44.1030, lon: -69.1089, office: "GYX", gridX: 82, gridY: 53 },
+            { city: "Caribou", lat: 46.8615, lon: -68.0117, office: "CAR", gridX: 76, gridY: 81 },
+            { city: "Skowhegan", lat: 44.7656, lon: -69.7192, office: "GYX", gridX: 65, gridY: 44 }
+        ];
+
+        // Add snow markers for each location
+        locations.forEach(loc => addSnowMarker(loc.lat, loc.lon, loc.city, loc.office, loc.gridX, loc.gridY));
+
+    </script>
+
+</body>
+</html>
