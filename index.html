@@ -1,39 +1,62 @@
-// Initialize Leaflet map
-const map = L.map('map').setView([43.9146, -69.7987], 9); // Centered on Woolwich, Maine
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snowfall Forecast Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 400px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>Snowfall Forecast for Woolwich, ME</h1>
+    <div id="map"></div>
+    <div id="forecast"></div>
 
-// Add a basemap
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
+    <script>
+        // Initialize Leaflet map
+        const map = L.map('map').setView([43.9146, -69.7987], 9); // Centered on Woolwich, Maine
 
-// Function to fetch and display the snowfall forecast
-tasync function fetchSnowfallForecast() {
-    const apiUrl = 'https://api.weather.gov/gridpoints/GYX/44,79/forecast'; // Adjust grid point if necessary
+        // Add a basemap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
 
-    try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-        
-        if (data && data.properties && data.properties.periods) {
-            const periods = data.properties.periods;
-            const snowfallData = periods.filter(period => period.shortForecast.includes('snow'));
+        // Function to fetch and display the snowfall forecast
+        async function fetchSnowfallForecast() {
+            const apiUrl = 'https://api.weather.gov/gridpoints/GYX/44,79/forecast'; // Adjust grid point if necessary
 
-            if (snowfallData.length > 0) {
-                let forecastText = '<h3>Snowfall Forecast for Woolwich, ME</h3><ul>';
-                snowfallData.forEach(period => {
-                    forecastText += `<li><strong>${period.name}:</strong> ${period.detailedForecast}</li>`;
-                });
-                forecastText += '</ul>';
-                
-                document.getElementById('forecast').innerHTML = forecastText;
-            } else {
-                document.getElementById('forecast').innerHTML = '<p>No significant snowfall expected.</p>';
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+
+                if (data && data.properties && data.properties.periods) {
+                    const periods = data.properties.periods;
+                    const snowfallData = periods.filter(period => period.shortForecast.toLowerCase().includes('snow'));
+
+                    if (snowfallData.length > 0) {
+                        let forecastText = '<h3>Snowfall Forecast for Woolwich, ME</h3><ul>';
+                        snowfallData.forEach(period => {
+                            forecastText += `<li><strong>${period.name}:</strong> ${period.detailedForecast}</li>`;
+                        });
+                        forecastText += '</ul>';
+                        document.getElementById('forecast').innerHTML = forecastText;
+                    } else {
+                        document.getElementById('forecast').innerHTML = '<p>No significant snowfall expected.</p>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching snowfall forecast:', error);
+                document.getElementById('forecast').innerHTML = '<p>Error loading forecast data.</p>';
             }
         }
-    } catch (error) {
-        console.error('Error fetching snowfall forecast:', error);
-        document.getElementById('forecast').innerHTML = '<p>Error loading forecast data.</p>';
-    }
-}
 
-fetchSnowfallForecast();
+        // Ensure the DOM is loaded before running
+        document.addEventListener("DOMContentLoaded", function() {
+            fetchSnowfallForecast();
+        });
+    </script>
+</body>
+</html>
