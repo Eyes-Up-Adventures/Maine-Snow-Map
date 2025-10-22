@@ -1,62 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snowfall Forecast Map</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        #map { height: 400px; width: 100%; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Eyes Up Adventures – Maine 48‑Hour Snowfall Forecast</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  /* Remove default margins so the map fills the viewport */
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    font-family: Arial, sans-serif;
+  }
+  /* Top header branding */
+  .header {
+    background-color: #0a4065;
+    color: #fff;
+    padding: 16px;
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+  }
+  /* Subheading explaining the data */
+  .subheader {
+    font-size: 0.9rem;
+    font-weight: normal;
+    margin-top: 4px;
+    color: #f0f8ff;
+  }
+  /* Map container fills remaining viewport height */
+  #map {
+    height: calc(100% - 72px);
+    width: 100%;
+  }
+  /* Legend styling */
+  .legend {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    padding: 10px;
+    background: rgba(255,255,255,0.9);
+    line-height: 1.4;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .legend-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .legend-color-box {
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+  }
+</style>
 </head>
 <body>
-    <h1>Snowfall Forecast for Woolwich, ME</h1>
-    <div id="map"></div>
-    <div id="forecast"></div>
+  <div class="header">
+    Eyes Up Adventures: Maine Snowfall Forecast
+    <div class="subheader">48‑hour predicted snow accumulation (forecasted, not observed)</div>
+  </div>
+  <div id="map"></div>
+  <div id="legend" class="legend"></div>
+  <script>
+    // Initialize the map centered on Maine
+    const map = L.map('map').setView([45.2538, -69.4455], 6);
 
-    <script>
-        // Initialize Leaflet map
-        const map = L.map('map').setView([43.9146, -69.7987], 9); // Centered on Woolwich, Maine
+    // Basemap layer using OpenStreetMap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
 
-        // Add a basemap
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+    // WMS layer for snowfall forecast (Days 1-3 snow amount) from the Winter Storm Severity Index service
+    const snowfallLayer = L.tileLayer.wms('https://mapservices.weather.noaa.gov/vector/services/outlooks/wpc_wssi/MapServer/WMSServer', {
+      layers: 'Snow_Amount_Days_1-3',
+      format: 'image/png',
+      transparent: true,
+      attribution: 'NOAA NWS',
+      version: '1.3.0'
+    }).addTo(map);
 
-        // Function to fetch and display the snowfall forecast
-        async function fetchSnowfallForecast() {
-            const apiUrl = 'https://api.weather.gov/gridpoints/GYX/44,79/forecast'; // Adjust grid point if necessary
+    // Refresh the WMS layer every hour to pick up updated forecasts
+    setInterval(() => {
+      snowfallLayer.setParams({
+        '_': Date.now() // cache buster parameter to force reload
+      });
+    }, 60 * 60 * 1000);
 
-            try {
-                const response = await fetch(apiUrl);
-                const data = await response.json();
+    // Define snow depth categories and colors
+    const snowCategories = [
+      { label: 'Trace – 1"', color: '#bdd7e6' },
+      { label: '1 – 2"',    color: '#6bafd6' },
+      { label: '2 – 3"',    color: '#3282bd' },
+      { label: '3 – 4"',    color: '#08529d' },
+      { label: '4 – 6"',    color: '#082694' },
+      { label: '6 – 8"',    color: '#ffff95' },
+      { label: '8 – 12"',   color: '#fec400' },
+      { label: '12 – 18"',  color: '#ff8700' },
+      { label: '18 – 24"',  color: '#db1400' },
+      { label: '24 – 30"',  color: '#9e0000' },
+      { label: '30"+',     color: '#680000' }
+    ];
 
-                if (data && data.properties && data.properties.periods) {
-                    const periods = data.properties.periods;
-                    const snowfallData = periods.filter(period => period.shortForecast.toLowerCase().includes('snow'));
+    // Build the legend HTML
+    function createLegend() {
+      const legendDiv = document.getElementById('legend');
+      let html = '<span class="legend-title">Snow depth (inches)</span>';
+      snowCategories.forEach(cat => {
+        html += '<div class="legend-item"><span class="legend-color-box" style="background:' + cat.color + ';"></span>' + cat.label + '</div>';
+      });
+      legendDiv.innerHTML = html;
+    }
 
-                    if (snowfallData.length > 0) {
-                        let forecastText = '<h3>Snowfall Forecast for Woolwich, ME</h3><ul>';
-                        snowfallData.forEach(period => {
-                            forecastText += `<li><strong>${period.name}:</strong> ${period.detailedForecast}</li>`;
-                        });
-                        forecastText += '</ul>';
-                        document.getElementById('forecast').innerHTML = forecastText;
-                    } else {
-                        document.getElementById('forecast').innerHTML = '<p>No significant snowfall expected.</p>';
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching snowfall forecast:', error);
-                document.getElementById('forecast').innerHTML = '<p>Error loading forecast data.</p>';
-            }
-        }
-
-        // Ensure the DOM is loaded before running
-        document.addEventListener("DOMContentLoaded", function() {
-            fetchSnowfallForecast();
-        });
-    </script>
+    createLegend();
+  </script>
 </body>
 </html>
