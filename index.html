@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Eyes Up Adventures – Maine 48‑Hour Snowfall Forecast</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Esri Leaflet adds connectors for ArcGIS services (used for the NWS snowfall forecast) -->
+  <script src="https://unpkg.com/esri-leaflet@3.0.8/dist/esri-leaflet.js"></script>
 <style>
   /* Remove default margins so the map fills the viewport */
   html, body {
@@ -81,23 +83,22 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // WMS layer for snowfall forecast (Days 1-3 snow amount) from the Winter Storm Severity Index service
-    const snowfallLayer = L.tileLayer.wms('https://mapservices.weather.noaa.gov/vector/services/outlooks/wpc_wssi/MapServer/WMSServer', {
-      layers: 'Snow_Amount_Days_1-3',
-      format: 'image/png',
-      transparent: true,
-      attribution: 'NOAA NWS',
-      version: '1.3.0'
-    }).addTo(map);
-
-    // Refresh the WMS layer every hour to pick up updated forecasts
-    setInterval(() => {
-      snowfallLayer.setParams({
-        '_': Date.now() // cache buster parameter to force reload
-      });
-    }, 60 * 60 * 1000);
-
-    // Define snow depth categories and colors
+    /*
+     * Load the official National Weather Service snowfall forecast.
+     *
+     * The WSSI "Snow_Amount_Days_1-3" layer previously used on this page
+     * represents an impact index and not the actual forecast accumulation.  To
+     * display accurate 48‑hour totals we instead pull data from the NWS
+     * National Digital Forecast Database (NDFD) via Esri’s hosted service
+     * `NDFD_SnowFall_v1`.  This service exposes incremental and cumulative
+     * snow amounts at 6‑hour intervals for up to 72 hours.  Here we query
+     * the "Accumulation by Time" layer (index 1) and request features for
+     * the next 48 hours.  Each feature is styled according to the
+     * user‑defined snow depth categories.
+     */
+    // Define snow depth categories and colors.  Declare this before
+    // using it in the snowfall layer so it is available within the
+    // closure.  Categories are expressed in inches.
     const snowCategories = [
       { label: 'Trace – 1"', color: '#bdd7e6' },
       { label: '1 – 2"',    color: '#6bafd6' },
@@ -109,8 +110,78 @@
       { label: '12 – 18"',  color: '#ff8700' },
       { label: '18 – 24"',  color: '#db1400' },
       { label: '24 – 30"',  color: '#9e0000' },
-      { label: '30"+',     color: '#680000' }
+      { label: '30+"',     color: '#680000' }
     ];
+
+    (function addSnowForecastLayer() {
+      /*
+       * Display the National Weather Service snowfall forecast by querying the
+       * “Accumulation by Time” layer (ID 1) from the hosted Esri feature service.
+       * This layer contains polygons representing cumulative snow totals over
+       * incremental time windows. We set a rolling 48‑hour time window starting
+       * now and refresh it hourly to keep the map current.  Features are styled
+       * according to their grid_code values, which correspond to specific
+       * snowfall ranges:
+       *   1  → 0‑1"
+       *   2  → 1‑2"
+       *   3  → 2‑3"
+       *   6  → 3‑6"
+       *   12 → 6‑12"
+       *   18 → 12‑18"
+       *   24 → 18‑24"
+       *   36 → 24‑36"
+       *   999 → >36"
+       *
+       * Values falling between our custom categories are mapped to the nearest
+       * broader category (e.g., 3‑6" falls into the “4 – 6\"” colour band).
+       */
+      const snowLayer = L.esri.featureLayer({
+        url: 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/NDFD_SnowFall_v1/FeatureServer/1',
+        onEachFeature: function (feature, layer) {
+          const code = feature.properties.grid_code;
+          const category = (function mapCode(c) {
+            if (c === 1) return snowCategories[0];        // 0–1
+            if (c === 2) return snowCategories[1];        // 1–2
+            if (c === 3) return snowCategories[2];        // 2–3
+            if (c === 6) return snowCategories[4];        // 3–6 → 4–6
+            if (c === 12) return snowCategories[6];       // 6–12 → 8–12
+            if (c === 18) return snowCategories[7];       // 12–18
+            if (c === 24) return snowCategories[8];       // 18–24
+            if (c === 36) return snowCategories[9];       // 24–36 → 24–30
+            if (c === 999) return snowCategories[10];     // >36 → 30+
+            return snowCategories[0]; // fallback
+          })(code);
+          const label = feature.properties.label || category.label;
+          layer.bindTooltip(label, { sticky: true });
+        },
+        style: function (feature) {
+          const code = feature.properties.grid_code;
+          const category = (function mapCode(c) {
+            if (c === 1) return snowCategories[0];
+            if (c === 2) return snowCategories[1];
+            if (c === 3) return snowCategories[2];
+            if (c === 6) return snowCategories[4];
+            if (c === 12) return snowCategories[6];
+            if (c === 18) return snowCategories[7];
+            if (c === 24) return snowCategories[8];
+            if (c === 36) return snowCategories[9];
+            if (c === 999) return snowCategories[10];
+            return snowCategories[0];
+          })(code);
+          return { color: '#000', weight: 0, fillColor: category.color, fillOpacity: 0.6 };
+        }
+      }).addTo(map);
+      function updateTimeRange() {
+        const now = new Date();
+        const end = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+        snowLayer.setTimeRange(now, end);
+      }
+      updateTimeRange();
+      setInterval(updateTimeRange, 60 * 60 * 1000);
+    })();
+
+    // NOTE: snowCategories are defined at the top of this script and are reused
+    // throughout the application for both styling and legend creation.
 
     // Build the legend HTML
     function createLegend() {
