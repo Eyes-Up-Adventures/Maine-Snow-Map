@@ -29,7 +29,10 @@
     position: absolute;
     bottom: 10px;
     right: 10px;
-    /* ensure the legend is always visible on top */
+    /* keep the legend above map overlays */
+    z-index: 1000;
+    /* allow clicks to pass through to the map */
+    pointer-events: none;
     padding: 10px;
     background: rgba(255,255,255,0.9);
     line-height: 1.4;
