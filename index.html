@@ -78,6 +78,18 @@
     // Initialize the map centered on Maine
     const map = L.map('map').setView([45.2538, -69.4455], 6);
 
+    // Create custom panes for each snow category to control drawing order. Higher
+    // z-index values ensure that larger snow amounts (which are later in the
+    // snowCategories array) are drawn above smaller amounts. The pane names
+    // correspond to the category index (e.g., 'snowPane0', 'snowPane1', etc.).
+    snowCategories.forEach((cat, i) => {
+      const paneName = 'snowPane' + i;
+      map.createPane(paneName);
+      // Use a base z-index in the 400s so these polygons sit above the base map
+      // but below most Leaflet controls. Increment by 1 for each category.
+      map.getPane(paneName).style.zIndex = 400 + i;
+    });
+
     // Basemap layer using OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -135,40 +147,51 @@
        * Values falling between our custom categories are mapped to the nearest
        * broader category (e.g., 3‑6" falls into the “4 – 6\"” colour band).
        */
+      // Helper function to map grid codes from the feature service to the
+      // corresponding index in the snowCategories array. Higher codes
+      // correspond to higher snowfall amounts.
+      function getCategoryIndex(code) {
+        if (code === 1) return 0;      // 0‑1"
+        if (code === 2) return 1;      // 1‑2"
+        if (code === 3) return 2;      // 2‑3"
+        if (code === 6) return 4;      // 3‑6 → 4‑6"
+        if (code === 12) return 6;     // 6‑12 → 8‑12"
+        if (code === 18) return 7;     // 12‑18"
+        if (code === 24) return 8;     // 18‑24"
+        if (code === 36) return 9;     // 24‑36 → 24‑30"
+        if (code === 999) return 10;   // >36 → 30+"
+        return 0;
+      }
+
       const snowLayer = L.esri.featureLayer({
         url: 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/NDFD_SnowFall_v1/FeatureServer/1',
+        // Only fetch the fields we need to reduce bandwidth and improve speed
+        fields: ['grid_code', 'label'],
+        // Simplify polygons on the server to reduce size; higher values simplify more
+        simplifyFactor: 0.35,
+        // Request fewer decimal places in geometries for a smaller payload
+        precision: 2,
+        // Use the canvas renderer for better performance with many polygons
+        renderer: L.canvas(),
         onEachFeature: function (feature, layer) {
           const code = feature.properties.grid_code;
-          const category = (function mapCode(c) {
-            if (c === 1) return snowCategories[0];        // 0–1
-            if (c === 2) return snowCategories[1];        // 1–2
-            if (c === 3) return snowCategories[2];        // 2–3
-            if (c === 6) return snowCategories[4];        // 3–6 → 4–6
-            if (c === 12) return snowCategories[6];       // 6–12 → 8–12
-            if (c === 18) return snowCategories[7];       // 12–18
-            if (c === 24) return snowCategories[8];       // 18–24
-            if (c === 36) return snowCategories[9];       // 24–36 → 24–30
-            if (c === 999) return snowCategories[10];     // >36 → 30+
-            return snowCategories[0]; // fallback
-          })(code);
+          const idx = getCategoryIndex(code);
+          const category = snowCategories[idx];
           const label = feature.properties.label || category.label;
           layer.bindTooltip(label, { sticky: true });
         },
         style: function (feature) {
           const code = feature.properties.grid_code;
-          const category = (function mapCode(c) {
-            if (c === 1) return snowCategories[0];
-            if (c === 2) return snowCategories[1];
-            if (c === 3) return snowCategories[2];
-            if (c === 6) return snowCategories[4];
-            if (c === 12) return snowCategories[6];
-            if (c === 18) return snowCategories[7];
-            if (c === 24) return snowCategories[8];
-            if (c === 36) return snowCategories[9];
-            if (c === 999) return snowCategories[10];
-            return snowCategories[0];
-          })(code);
-          return { color: '#000', weight: 0, fillColor: category.color, fillOpacity: 0.6 };
+          const idx = getCategoryIndex(code);
+          const category = snowCategories[idx];
+          // Assign each polygon to its own pane based on the category index.
+          return {
+            pane: 'snowPane' + idx,
+            color: '#000',
+            weight: 0,
+            fillColor: category.color,
+            fillOpacity: 0.6
+          };
         }
       }).addTo(map);
       function updateTimeRange() {
